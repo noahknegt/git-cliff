@@ -365,11 +365,9 @@ impl Commit<'_> {
 						"Skipping commit",
 					)));
 				} else {
-					self.group = parser.group.clone().or(self.group);
-					self.scope = parser.scope.clone().or(self.scope);
-					self.default_scope =
-						parser.default_scope.clone().or(self.default_scope);
-					return Ok(self);
+					self.group = self.group.or(parser.group.clone());
+					self.scope = self.scope.or(parser.scope.clone());
+					self.default_scope = self.default_scope.or(parser.default_scope.clone());
 				}
 			}
 			for (regex, text) in regex_checks {
@@ -386,10 +384,10 @@ impl Commit<'_> {
 							}
 							value
 						};
-						self.group = parser.group.clone().map(regex_replace);
-						self.scope = parser.scope.clone().map(regex_replace);
-						self.default_scope.clone_from(&parser.default_scope);
-						return Ok(self);
+
+						self.group = self.group.or(parser.group.clone().map(&regex_replace));
+						self.scope = self.scope.or(parser.scope.clone().map(&regex_replace));
+						self.default_scope = self.default_scope.or(parser.default_scope.clone().map(&regex_replace));
 					}
 				}
 			}

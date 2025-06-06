@@ -1,6 +1,7 @@
 use crate::command;
 use crate::embed::EmbeddedConfig;
 use crate::error::Result;
+use crate::error::Error;
 use regex::{
 	Regex,
 	RegexBuilder,
@@ -363,6 +364,9 @@ pub struct CommitParser {
 	/// Regex for matching the field value.
 	#[serde(with = "serde_regex", default)]
 	pub pattern:       Option<Regex>,
+	/// Priority of the commit parser.
+	/// Higher priority parsers are applied first.
+	pub priority:      Option<u32>,
 }
 
 /// `TextProcessor`, e.g. for modifying commit messages.
@@ -458,7 +462,7 @@ impl Config {
 		// Adding sources one after another overwrites the previous values.
 		// Thus adding the default config initializes the config with default values.
 		let default_config_str = EmbeddedConfig::get_config()?;
-		Ok(config::Config::builder()
+		let mut config: Config = config::Config::builder()
 			.add_source(config::File::from_str(
 				&default_config_str,
 				config::FileFormat::Toml,
@@ -468,7 +472,31 @@ impl Config {
 				config::Environment::with_prefix("GIT_CLIFF").separator("__"),
 			)
 			.build()?
-			.try_deserialize()?)
+			.try_deserialize()?;
+
+		let mut listOfUsedPriority: Vec<u32> = vec![];
+		// Check if the commit parsers have unique priorities.
+		for parser in &mut config.git.commit_parsers {
+			if let Some(priority) = parser.priority {
+				if listOfUsedPriority.contains(&priority) {
+					parser.priority = None;
+				}
+				listOfUsedPriority.push(priority);
+			}
+		}
+
+		// Assign priority to commit parsers. Starting from 1.
+		let mut priority = 1;
+		for parser in &mut config.git.commit_parsers {
+			if parser.priority.is_none() {
+				parser.priority = Some(priority);
+				priority += 1;
+			}
+		}
+
+		config.git.commit_parsers.sort_by_key(|p| p.priority);
+
+		Ok(config)
 	}
 }
 
