@@ -110,6 +110,10 @@ pub struct GitConfig {
     pub link_parsers: Vec<LinkParser>,
     /// Exclude commits that are not matched by any commit parser.
     pub filter_commits: bool,
+    /// Apply multiple commit parsers to each commit in the order they are defined.
+    /// When enabled, all matching parsers will be applied sequentially, with later
+    /// parsers potentially overriding values set by earlier ones.
+    pub apply_multiple_parsers: bool,
     /// Regex to select git tags that represent releases.
     #[serde(with = "serde_regex", default)]
     pub tag_pattern: Option<Regex>,
