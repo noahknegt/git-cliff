@@ -110,9 +110,10 @@ pub struct GitConfig {
     pub link_parsers: Vec<LinkParser>,
     /// Exclude commits that are not matched by any commit parser.
     pub filter_commits: bool,
-    /// Apply multiple commit parsers to each commit in the order they are defined.
-    /// When enabled, all matching parsers will be applied sequentially, with later
-    /// parsers potentially overriding values set by earlier ones.
+    /// Apply multiple commit parsers to each commit based on their priority.
+    /// When enabled, all matching parsers will be applied in priority order, with
+    /// higher priority parsers overriding values set by lower priority parsers.
+    /// If no priority is specified, parsers are applied in the order they appear.
     pub apply_multiple_parsers: bool,
     /// Regex to select git tags that represent releases.
     #[serde(with = "serde_regex", default)]
@@ -394,6 +395,11 @@ pub struct CommitParser {
     /// Regex for matching the field value.
     #[serde(with = "serde_regex", default)]
     pub pattern: Option<Regex>,
+    /// Priority of this parser when applying multiple parsers.
+    /// Higher values indicate higher priority. Parsers with higher priority
+    /// will override values set by parsers with lower priority.
+    /// If not specified, parsers are applied in the order they appear in the configuration.
+    pub priority: Option<u32>,
 }
 
 /// `TextProcessor`, e.g. for modifying commit messages.

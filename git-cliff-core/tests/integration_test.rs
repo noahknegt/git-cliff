@@ -60,6 +60,7 @@ fn generate_changelog() -> Result<()> {
                 skip: None,
                 field: None,
                 pattern: None,
+                priority: None,
             },
             CommitParser {
                 sha: None,
@@ -72,6 +73,7 @@ fn generate_changelog() -> Result<()> {
                 skip: None,
                 field: None,
                 pattern: None,
+                priority: None,
             },
             CommitParser {
                 sha: None,
@@ -84,6 +86,7 @@ fn generate_changelog() -> Result<()> {
                 skip: None,
                 field: None,
                 pattern: None,
+                priority: None,
             },
             CommitParser {
                 sha: None,
@@ -96,6 +99,7 @@ fn generate_changelog() -> Result<()> {
                 skip: None,
                 field: None,
                 pattern: None,
+                priority: None,
             },
             CommitParser {
                 sha: None,
@@ -114,6 +118,7 @@ fn generate_changelog() -> Result<()> {
         filter_commits: true,
         apply_multiple_parsers: false,
         tag_pattern: None,
+                priority: None,
         skip_tags: None,
         ignore_tags: None,
         count_tags: None,

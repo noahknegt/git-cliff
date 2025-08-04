@@ -77,9 +77,10 @@ commit_parsers = [
 ]
 # Exclude commits that are not matched by any commit parser.
 filter_commits = false
-# Apply multiple commit parsers to each commit in the order they are defined.
-# When enabled, all matching parsers will be applied sequentially, with later
-# parsers potentially overriding values set by earlier ones.
+# Apply multiple commit parsers to each commit based on their priority.
+# When enabled, all matching parsers will be applied in priority order, with
+# higher priority parsers overriding values set by lower priority parsers.
+# If no priority is specified, parsers are applied in the order they appear.
 apply_multiple_parsers = false
 # An array of link parsers for extracting external references, and turning them into URLs, using regex.
 link_parsers = []
