@@ -14,6 +14,8 @@ use crate::{command, error};
 /// Default initial tag.
 const DEFAULT_INITIAL_TAG: &str = "0.1.0";
 
+
+
 /// Manifest file information and regex for matching contents.
 #[derive(Debug)]
 struct ManifestInfo {
@@ -390,6 +392,11 @@ pub struct CommitParser {
     /// Regex for matching the field value.
     #[serde(with = "serde_regex", default)]
     pub pattern: Option<Regex>,
+    /// Priority of this parser when applying multiple parsers.
+    /// Higher values indicate higher priority. Parsers with higher priority
+    /// will override values set by parsers with lower priority.
+    /// If not specified, parsers are applied in the order they appear in the configuration.
+    pub priority: Option<u32>,
 }
 
 /// `TextProcessor`, e.g. for modifying commit messages.

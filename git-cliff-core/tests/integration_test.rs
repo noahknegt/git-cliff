@@ -60,6 +60,7 @@ fn generate_changelog() -> Result<()> {
                 skip: None,
                 field: None,
                 pattern: None,
+                priority: None,
             },
             CommitParser {
                 sha: None,
@@ -72,6 +73,7 @@ fn generate_changelog() -> Result<()> {
                 skip: None,
                 field: None,
                 pattern: None,
+                priority: None,
             },
             CommitParser {
                 sha: None,
@@ -84,6 +86,7 @@ fn generate_changelog() -> Result<()> {
                 skip: None,
                 field: None,
                 pattern: None,
+                priority: None,
             },
             CommitParser {
                 sha: None,
@@ -96,6 +99,7 @@ fn generate_changelog() -> Result<()> {
                 skip: None,
                 field: None,
                 pattern: None,
+                priority: None,
             },
             CommitParser {
                 sha: None,
@@ -108,6 +112,7 @@ fn generate_changelog() -> Result<()> {
                 skip: None,
                 field: Some(String::from("author.name")),
                 pattern: Regex::new("John Doe").ok(),
+                priority: None,
             },
         ],
         protect_breaking_commits: false,

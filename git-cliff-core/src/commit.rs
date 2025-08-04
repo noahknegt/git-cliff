@@ -2,6 +2,7 @@ use git_conventional::{Commit as ConventionalCommit, Footer as ConventionalFoote
 #[cfg(feature = "repo")]
 use git2::{Commit as GitCommit, Signature as CommitSignature};
 use lazy_regex::{Lazy, Regex, lazy_regex};
+use log::trace;
 use serde::ser::{SerializeStruct, Serializer};
 use serde::{Deserialize, Deserializer, Serialize};
 use serde_json::value::Value;
@@ -217,7 +218,7 @@ impl Commit<'_> {
             }
         }
 
-        commit = commit.parse(
+        commit = commit.parse_with_options(
             &config.commit_parsers,
             config.protect_breaking_commits,
             config.filter_commits,
@@ -270,6 +271,21 @@ impl Commit<'_> {
     /// [`group`]: Commit::group
     /// [`scope`]: Commit::scope
     pub fn parse(
+        self,
+        parsers: &[CommitParser],
+        protect_breaking: bool,
+        filter: bool,
+    ) -> Result<Self> {
+        self.parse_with_options(parsers, protect_breaking, filter)
+    }
+
+    /// Parses the commit using [`CommitParser`]s with options.
+    ///
+    /// Sets the [`group`] and [`scope`] of the commit.
+    ///
+    /// [`group`]: Commit::group
+    /// [`scope`]: Commit::scope
+    pub fn parse_with_options(
         mut self,
         parsers: &[CommitParser],
         protect_breaking: bool,
@@ -278,7 +294,12 @@ impl Commit<'_> {
         let lookup_context = serde_json::to_value(&self).map_err(|e| {
             AppError::FieldError(format!("failed to convert context into value: {e}",))
         })?;
-        for parser in parsers {
+        
+        let mut any_parser_matched = false;
+        let mut matching_parsers = Vec::new();
+        
+        // Collect all matching parsers
+        for (index, parser) in parsers.iter().enumerate() {
             let mut regex_checks = Vec::new();
             if let Some(message_regex) = parser.message.as_ref() {
                 regex_checks.push((message_regex, self.message.to_string()));
@@ -342,36 +363,54 @@ impl Commit<'_> {
                     }
                 }
             }
+            
+            // Check SHA match
             if parser.sha.clone().map(|v| v.to_lowercase()).as_deref() == Some(&self.id) {
-                if self.skip_commit(parser, protect_breaking) {
-                    return Err(AppError::GroupError(String::from("Skipping commit")));
-                } else {
-                    self.group = parser.group.clone().or(self.group);
-                    self.scope = parser.scope.clone().or(self.scope);
-                    self.default_scope = parser.default_scope.clone().or(self.default_scope);
-                    return Ok(self);
-                }
+                any_parser_matched = true;
+                let priority = parser.priority.unwrap_or(index as u32);
+                matching_parsers.push((priority, index, parser));
             }
+            
+            // Check regex matches
             for (regex, text) in regex_checks {
                 if regex.is_match(text.trim()) {
-                    if self.skip_commit(parser, protect_breaking) {
-                        return Err(AppError::GroupError(String::from("Skipping commit")));
-                    } else {
-                        let regex_replace = |mut value: String| {
-                            for mat in regex.find_iter(&text) {
-                                value = regex.replace(mat.as_str(), value).to_string();
-                            }
-                            value
-                        };
-                        self.group = parser.group.clone().map(regex_replace);
-                        self.scope = parser.scope.clone().map(regex_replace);
-                        self.default_scope.clone_from(&parser.default_scope);
-                        return Ok(self);
-                    }
+                    any_parser_matched = true;
+                    let priority = parser.priority.unwrap_or(index as u32);
+                    matching_parsers.push((priority, index, parser));
+                    break; // Only apply the first matching regex for this parser
                 }
             }
         }
-        if filter {
+        
+        // Apply all matching parsers in priority order
+        if !matching_parsers.is_empty() {
+            // Remove duplicates (same parser might match multiple patterns)
+            matching_parsers.sort_by_key(|(priority, index, _)| (*priority, *index));
+            matching_parsers.dedup_by_key(|(_, index, _)| *index);
+            
+            // Sort by priority (higher priority = later application, so they override)
+            matching_parsers.sort_by_key(|(priority, index, _)| (*priority, *index));
+            
+            // Apply parsers in priority order
+            for (_, _, parser) in matching_parsers {
+                if self.skip_commit(parser, protect_breaking) {
+                    return Err(AppError::GroupError(String::from("Skipping commit")));
+                }
+                
+                // Apply parser effects, only overriding if the parser specifies a value
+                if parser.group.is_some() {
+                    self.group = parser.group.clone();
+                }
+                if parser.scope.is_some() {
+                    self.scope = parser.scope.clone();
+                }
+                if parser.default_scope.is_some() {
+                    self.default_scope = parser.default_scope.clone();
+                }
+            }
+        }
+        
+        if filter && !any_parser_matched {
             Err(AppError::GroupError(String::from(
                 "Commit does not belong to any group",
             )))
@@ -540,6 +579,7 @@ mod test {
                 skip: None,
                 field: None,
                 pattern: None,
+                priority: None,
             }],
             false,
             false,
@@ -747,6 +787,7 @@ Refs: #123
                 skip: None,
                 field: None,
                 pattern: None,
+                priority: None,
             }],
             false,
             false,
@@ -808,6 +849,7 @@ Refs: #123
                 skip: None,
                 field: Some(String::from("author.name")),
                 pattern: Regex::new("John Doe").ok(),
+                priority: None,
             }],
             false,
             false,
@@ -826,6 +868,7 @@ Refs: #123
                 skip: None,
                 field: Some(String::from("remote.pr_title")),
                 pattern: Regex::new("feat: do something").ok(),
+                priority: None,
             }],
             false,
             false,
@@ -844,6 +887,7 @@ Refs: #123
                 skip: None,
                 field: Some(String::from("body")),
                 pattern: Regex::new("something great").ok(),
+                priority: None,
             }],
             false,
             false,
@@ -862,6 +906,7 @@ Refs: #123
                 skip: None,
                 field: Some(String::from("remote.pr_labels")),
                 pattern: Regex::new("feature|deprecation").ok(),
+                priority: None,
             }],
             false,
             false,
@@ -880,6 +925,7 @@ Refs: #123
                 skip: None,
                 field: Some(String::from("links")),
                 pattern: Regex::new(".*").ok(),
+                priority: None,
             }],
             false,
             false,
@@ -898,6 +944,7 @@ Refs: #123
                 skip: None,
                 field: Some(String::from("remote")),
                 pattern: Regex::new(".*").ok(),
+                priority: None,
             }],
             false,
             false,
@@ -929,6 +976,7 @@ Refs: #123
                 skip: Some(true),
                 field: None,
                 pattern: None,
+                priority: None,
             }],
             false,
             false,
@@ -972,6 +1020,7 @@ Refs: #123
                 skip: None,
                 field: Some(String::from("author.name")),
                 pattern: Regex::new("^John Doe$").ok(),
+                priority: None,
             }],
             false,
             false,
@@ -990,6 +1039,7 @@ Refs: #123
                 skip: None,
                 field: Some(String::from("remote.pr_title")),
                 pattern: Regex::new("^feat(\\([^)]+\\))?").ok(),
+                priority: None,
             }],
             false,
             false,
@@ -1008,6 +1058,7 @@ Refs: #123
                 skip: None,
                 field: Some(String::from("author.name")),
                 pattern: Regex::new("Something else").ok(),
+                priority: None,
             }],
             false,
             true,
@@ -1017,6 +1068,326 @@ Refs: #123
             "Expected error because `author.name` did not match the given pattern, but got Ok"
         );
 
+        Ok(())
+    }
+
+    #[test]
+    fn parse_multiple_parsers() -> Result<()> {
+        let commit = Commit::new(
+            String::from("8f55e69eba6e6ce811ace32bd84cc82215673cb6"),
+            String::from("feat(api): add new endpoint"),
+        );
+
+        // Test multiple parser mode without priorities (uses order)
+        let parsed_commit = commit.clone().parse_with_options(
+            &[
+                CommitParser {
+                    message: Regex::new("feat*").ok(),
+                    group: Some(String::from("Features")),
+                    scope: Some(String::from("first_scope")),
+                    ..Default::default()
+                },
+                CommitParser {
+                    message: Regex::new("feat*").ok(),
+                    group: Some(String::from("Different Group")),
+                    scope: Some(String::from("second_scope")),
+                    ..Default::default()
+                },
+            ],
+            false,
+            false,
+        )?;
+
+        // Should apply both parsers, with later one overriding (order-based)
+        assert_eq!(Some(String::from("Different Group")), parsed_commit.group);
+        assert_eq!(Some(String::from("second_scope")), parsed_commit.scope);
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_multiple_parsers_with_priorities() -> Result<()> {
+        let commit = Commit::new(
+            String::from("8f55e69eba6e6ce811ace32bd84cc82215673cb6"),
+            String::from("feat(api): add new endpoint"),
+        );
+
+        // Test priority-based processing
+        let parsed_commit = commit.clone().parse_with_options(
+            &[
+                CommitParser {
+                    message: Regex::new("feat*").ok(),
+                    group: Some(String::from("Features")),
+                    scope: Some(String::from("first_scope")),
+                    priority: Some(10), // Lower priority
+                    ..Default::default()
+                },
+                CommitParser {
+                    message: Regex::new("feat*").ok(),
+                    group: Some(String::from("Enhanced Features")),
+                    scope: Some(String::from("priority_scope")),
+                    priority: Some(20), // Higher priority - should override
+                    ..Default::default()
+                },
+                CommitParser {
+                    message: Regex::new("feat*").ok(),
+                    group: Some(String::from("Low Priority Group")),
+                    scope: Some(String::from("low_priority_scope")),
+                    priority: Some(5), // Even lower priority
+                    ..Default::default()
+                },
+            ],
+            false,
+            false,
+        )?;
+
+        // Higher priority parser (20) should override lower priority ones
+        assert_eq!(Some(String::from("Enhanced Features")), parsed_commit.group);
+        assert_eq!(Some(String::from("priority_scope")), parsed_commit.scope);
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_multiple_parsers_partial_override() -> Result<()> {
+        let commit = Commit::new(
+            String::from("8f55e69eba6e6ce811ace32bd84cc82215673cb6"),
+            String::from("feat(api): add new endpoint"),
+        );
+
+        // Test that only specified fields are overridden
+        let parsed_commit = commit.clone().parse_with_options(
+            &[
+                CommitParser {
+                    message: Regex::new("feat*").ok(),
+                    group: Some(String::from("Features")),
+                    scope: Some(String::from("api")),
+                    default_scope: Some(String::from("default1")),
+                    ..Default::default()
+                },
+                CommitParser {
+                    message: Regex::new("feat*").ok(),
+                    group: Some(String::from("Enhanced Features")),
+                    scope: None, // No scope override
+                    default_scope: Some(String::from("default2")),
+                    ..Default::default()
+                },
+            ],
+            false,
+            false,
+        )?;
+
+        // Group should be overridden, scope should remain from first parser
+        assert_eq!(Some(String::from("Enhanced Features")), parsed_commit.group);
+        assert_eq!(Some(String::from("api")), parsed_commit.scope);
+        assert_eq!(Some(String::from("default2")), parsed_commit.default_scope);
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_multiple_parsers_partial_override_with_priorities() -> Result<()> {
+        let commit = Commit::new(
+            String::from("8f55e69eba6e6ce811ace32bd84cc82215673cb6"),
+            String::from("feat(api): add new endpoint"),
+        );
+
+        // Test partial overrides with explicit priorities
+        let parsed_commit = commit.clone().parse_with_options(
+            &[
+                CommitParser {
+                    message: Regex::new("feat*").ok(),
+                    group: Some(String::from("Features")),
+                    scope: Some(String::from("api")),
+                    default_scope: Some(String::from("default1")),
+                    priority: Some(5),
+                    ..Default::default()
+                },
+                CommitParser {
+                    message: Regex::new("feat*").ok(),
+                    group: Some(String::from("Enhanced Features")),
+                    scope: None, // No scope override - should keep from lower priority
+                    default_scope: Some(String::from("default2")),
+                    priority: Some(10), // Higher priority
+                    ..Default::default()
+                },
+            ],
+            false,
+            false,
+        )?;
+
+        // Group and default_scope should be from higher priority parser, scope from lower
+        assert_eq!(Some(String::from("Enhanced Features")), parsed_commit.group);
+        assert_eq!(Some(String::from("api")), parsed_commit.scope);
+        assert_eq!(Some(String::from("default2")), parsed_commit.default_scope);
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_multiple_parsers_skip_behavior() -> Result<()> {
+        let commit = Commit::new(
+            String::from("8f55e69eba6e6ce811ace32bd84cc82215673cb6"),
+            String::from("feat(api): add new endpoint"),
+        );
+
+        // Test that skip=true on any matching parser causes the commit to be skipped
+        let parse_result = commit.clone().parse_with_options(
+            &[
+                CommitParser {
+                    message: Regex::new("feat*").ok(),
+                    group: Some(String::from("Features")),
+                    skip: Some(false),
+                    ..Default::default()
+                },
+                CommitParser {
+                    message: Regex::new("feat*").ok(),
+                    group: Some(String::from("Skipped Group")),
+                    skip: Some(true), // This should cause the commit to be skipped
+                    ..Default::default()
+                },
+            ],
+            false,
+            false,
+        );
+
+        assert!(
+            parse_result.is_err(),
+            "Expected error when any parser has skip=true, but got Ok"
+        );
+
+        Ok(())
+    }
+
+    #[test]
+    fn parse_multiple_parsers_different_patterns() -> Result<()> {
+        let commit = Commit::new(
+            String::from("8f55e69eba6e6ce811ace32bd84cc82215673cb6"),
+            String::from("feat(api): add new endpoint for user management"),
+        );
+
+        // Test multiple parsers with different matching patterns
+        let parsed_commit = commit.clone().parse_with_options(
+            &[
+                CommitParser {
+                    message: Regex::new("feat*").ok(),
+                    group: Some(String::from("Features")),
+                    ..Default::default()
+                },
+                CommitParser {
+                    message: Regex::new(".*api.*").ok(),
+                    scope: Some(String::from("api_scope")),
+                    ..Default::default()
+                },
+                CommitParser {
+                    message: Regex::new(".*user.*").ok(),
+                    default_scope: Some(String::from("user_scope")),
+                    ..Default::default()
+                },
+            ],
+            false,
+            false,
+        )?;
+
+        // All matching parsers should be applied
+        assert_eq!(Some(String::from("Features")), parsed_commit.group);
+        assert_eq!(Some(String::from("api_scope")), parsed_commit.scope);
+        assert_eq!(Some(String::from("user_scope")), parsed_commit.default_scope);
+
+        Ok(())
+    }
+
+    #[test]
+    fn test_config_multiple_parsers_integration() -> Result<()> {
+        use crate::config::Config;
+        
+        let config_str = r#"
+[changelog]
+body = """
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim | upper_first }}
+{% for commit in commits %}
+- {% if commit.scope %}*({{ commit.scope }})* {% endif %}{{ commit.message }}
+{% endfor %}
+{% endfor %}
+"""
+
+[git]
+conventional_commits = false
+filter_commits = true
+commit_parsers = [
+    { message = "^feat", group = "Features", priority = 10 },
+    { message = ".*api.*", scope = "api", priority = 20 },
+    { message = ".*test.*", default_scope = "testing", priority = 5 },
+]
+"#;
+
+        let config: Config = config_str.parse()?;
+        
+        // Test that a commit gets processed by multiple parsers
+        let commit = Commit::new(
+            String::from("abcd1234"),
+            String::from("feat: add new api test endpoint"),
+        );
+        
+        let processed_commit = commit.process(&config.git)?;
+        
+        // Should have group from first parser (priority 10), scope from second parser (priority 20), 
+        // default_scope from third parser (priority 5)
+        // Higher priority parsers override lower priority ones, so:
+        // - Testing scope (priority 5) applies first: default_scope = "testing"
+        // - Features group (priority 10) applies second: group = "Features"  
+        // - API scope (priority 20) applies last: scope = "api"
+        assert_eq!(Some(String::from("Features")), processed_commit.group);
+        assert_eq!(Some(String::from("api")), processed_commit.scope);
+        assert_eq!(Some(String::from("testing")), processed_commit.default_scope);
+        
+        Ok(())
+    }
+
+    #[test]
+    fn test_multiple_parsers_always_enabled() -> Result<()> {
+        use crate::config::Config;
+        
+        let config_str = r#"
+[changelog]
+body = """
+{% for group, commits in commits | group_by(attribute="group") %}
+### {{ group | striptags | trim | upper_first }}
+{% for commit in commits %}
+- {% if commit.scope %}*({{ commit.scope }})* {% endif %}{{ commit.message }}
+{% endfor %}
+{% endfor %}
+"""
+
+[git]
+conventional_commits = false
+filter_commits = true
+commit_parsers = [
+    { message = "^feat", group = "Features", scope = "first_scope" },
+    { message = ".*api.*", scope = "api", group = "API Changes" },
+    { message = ".*test.*", default_scope = "testing" },
+]
+"#;
+
+        let config: Config = config_str.parse()?;
+        
+        // Test that a commit gets processed by multiple parsers (always enabled now)
+        let commit = Commit::new(
+            String::from("abcd1234"),
+            String::from("feat: add new api test endpoint"),
+        );
+        
+        let processed_commit = commit.process(&config.git)?;
+        
+        // Should have values from all matching parsers, with later ones overriding
+        // - First parser matches "feat": group = "Features", scope = "first_scope"
+        // - Second parser matches "api": scope = "api", group = "API Changes" (overrides)
+        // - Third parser matches "test": default_scope = "testing"
+        assert_eq!(Some(String::from("API Changes")), processed_commit.group);
+        assert_eq!(Some(String::from("api")), processed_commit.scope);
+        assert_eq!(Some(String::from("testing")), processed_commit.default_scope);
+        
         Ok(())
     }
 }

@@ -717,6 +717,7 @@ mod test {
                         skip: None,
                         field: None,
                         pattern: None,
+                        priority: None,
                     },
                     CommitParser {
                         sha: Some(String::from("coffee")),
@@ -729,6 +730,7 @@ mod test {
                         skip: Some(true),
                         field: None,
                         pattern: None,
+                        priority: None,
                     },
                     CommitParser {
                         sha: Some(String::from("coffee2")),
@@ -741,6 +743,7 @@ mod test {
                         skip: Some(true),
                         field: None,
                         pattern: None,
+                        priority: None,
                     },
                     CommitParser {
                         sha: None,
@@ -753,6 +756,7 @@ mod test {
                         skip: Some(true),
                         field: None,
                         pattern: None,
+                        priority: None,
                     },
                     CommitParser {
                         sha: None,
@@ -765,6 +769,7 @@ mod test {
                         skip: None,
                         field: None,
                         pattern: None,
+                        priority: None,
                     },
                     CommitParser {
                         sha: None,
@@ -777,6 +782,7 @@ mod test {
                         skip: None,
                         field: None,
                         pattern: None,
+                        priority: None,
                     },
                     CommitParser {
                         sha: None,
@@ -789,6 +795,7 @@ mod test {
                         skip: None,
                         field: None,
                         pattern: None,
+                        priority: None,
                     },
                     CommitParser {
                         sha: None,
@@ -801,6 +808,7 @@ mod test {
                         skip: None,
                         field: None,
                         pattern: None,
+                        priority: None,
                     },
                     CommitParser {
                         sha: None,
@@ -813,6 +821,7 @@ mod test {
                         skip: None,
                         field: None,
                         pattern: None,
+                        priority: None,
                     },
                     CommitParser {
                         sha: None,
@@ -825,6 +834,7 @@ mod test {
                         skip: None,
                         field: None,
                         pattern: None,
+                        priority: None,
                     },
                     CommitParser {
                         sha: None,
@@ -837,6 +847,7 @@ mod test {
                         skip: None,
                         field: None,
                         pattern: None,
+                        priority: None,
                     },
                 ],
                 protect_breaking_commits: false,
