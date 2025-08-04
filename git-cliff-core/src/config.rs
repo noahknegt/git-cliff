@@ -14,10 +14,7 @@ use crate::{command, error};
 /// Default initial tag.
 const DEFAULT_INITIAL_TAG: &str = "0.1.0";
 
-/// Default value for apply_multiple_parsers.
-fn default_apply_multiple_parsers() -> bool {
-    true
-}
+
 
 /// Manifest file information and regex for matching contents.
 #[derive(Debug)]
@@ -115,12 +112,6 @@ pub struct GitConfig {
     pub link_parsers: Vec<LinkParser>,
     /// Exclude commits that are not matched by any commit parser.
     pub filter_commits: bool,
-    /// Apply multiple commit parsers to each commit based on their priority.
-    /// When enabled, all matching parsers will be applied in priority order, with
-    /// higher priority parsers overriding values set by lower priority parsers.
-    /// If no priority is specified, parsers are applied in the order they appear.
-    #[serde(default = "default_apply_multiple_parsers")]
-    pub apply_multiple_parsers: bool,
     /// Regex to select git tags that represent releases.
     #[serde(with = "serde_regex", default)]
     pub tag_pattern: Option<Regex>,

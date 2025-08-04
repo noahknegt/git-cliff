@@ -852,7 +852,6 @@ mod test {
                 ],
                 protect_breaking_commits: false,
                 filter_commits: false,
-                apply_multiple_parsers: false,
                 tag_pattern: None,
                 skip_tags: Regex::new("v3.*").ok(),
                 ignore_tags: None,
